@@ -1862,8 +1862,6 @@ const VDartSatisfactionDashboard = () => {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '14px', color: '#6b7280', fontWeight: '600' }}>Total Records</div>
-              <div style={{ fontSize: '24px', fontWeight: '800', color: '#2563eb' }}>{realExcelData.length}</div>
             </div>
           </div>
         </div>
