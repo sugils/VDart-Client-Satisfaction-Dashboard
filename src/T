@@ -1,0 +1,485 @@
+//detailed view format design
+import React, { useState, useEffect } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+
+const Dashboard = () => {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedQuestion, setExpandedQuestion] = useState(null);
+  const [expandedResponse, setExpandedResponse] = useState(null);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const fileContent = await window.fs.readFile('paste.txt', { encoding: 'utf8' });
+        
+        // Parse CSV
+        const lines = fileContent.split('\n');
+        const headers = lines[0].split('\t');
+        const rows = lines.slice(1).filter(line => line.trim() !== '');
+        
+        const parsedData = rows.map(row => {
+          const values = row.split('\t');
+          const obj = {};
+          headers.forEach((header, index) => {
+            obj[header.trim()] = values[index] || '';
+          });
+          return obj;
+        });
+        
+        // Filter valid responses - only exclude completely empty rows
+        const validData = parsedData.filter(row => 
+          row.Email && row.Email.trim() !== '' && row.Email !== 'NA' && row.Email !== 'Not Answered'
+        );
+        
+        console.log('Total parsed rows:', parsedData.length);
+        console.log('Valid data rows:', validData.length);
+        console.log('Sample data:', validData.slice(0, 3));
+        
+        setData(validData);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
+
+  // Survey questions mapping
+  const surveyQuestions = {
+    'How well does VDart understand your staffing requirements and expectations?': 'Understanding of Requirements',
+    'How would you rate the overall quality of candidates VDart has provided?': 'Candidate Quality',
+    'How satisfied are you with VDart\'s speed in delivering candidates for your open roles?': 'Delivery Speed',
+    'How effectively does VDart act as a strategic hiring partner rather than just a service provider?': 'Strategic Partnership',
+    'In the past quarter, have you faced any challenges or difficulties while working with VDart?': 'Recent Challenges',
+    'How would you rate the responsiveness and communication of your VDart client Partner?': 'Communication & Responsiveness',
+    'In the past 3 months, how frequently has your VDart client partner proactively checked in with you?': 'Client Partner Check-in Frequency',
+    'Are you satisfied with your current VDart client partner, or would you prefer a change?': 'Client Partner Satisfaction',
+    'How likely is it that you would recommend VDart to a friend or colleague?': 'Net Promoter Score (NPS)',
+    'Among all the staffing vendors you work with, how does VDart rank in terms of service quality and effectiveness?': 'Vendor Ranking',
+    'Would you be interested in exploring additional services offered by VDart beyond staffing solutions?': 'Additional Services Interest',
+    'Are you aware that VDart operates on a global scale, not just in North America?': 'Global Awareness'
+  };
+
+  // Multi-select question categories
+  const multiSelectCategories = {
+    'Hiring Challenges': [
+      'What are the top hiring challenges your organization is facing right now? (Multiple selections allowed) | Talent Availability',
+      'What are the top hiring challenges your organization is facing right now? (Multiple selections allowed) | Hiring Speed',
+      'What are the top hiring challenges your organization is facing right now? (Multiple selections allowed) | Cost Control',
+      'What are the top hiring challenges your organization is facing right now? (Multiple selections allowed) | Candidate Quality',
+      'What are the top hiring challenges your organization is facing right now? (Multiple selections allowed) | Industry-Specific Hiring Challenges'
+    ],
+    'Key Success Factors': [
+      'What key factor influences your willingness to continue working with VDart? (Multiple selections allowed) | Quality of Candidates',
+      'What key factor influences your willingness to continue working with VDart? (Multiple selections allowed) | Speed of Hiring',
+      'What key factor influences your willingness to continue working with VDart? (Multiple selections allowed) | Pricing and Value',
+      'What key factor influences your willingness to continue working with VDart? (Multiple selections allowed) | Innovation in Recruitment Processes',
+      'What key factor influences your willingness to continue working with VDart? (Multiple selections allowed) | Scope of Services Offered',
+      'What key factor influences your willingness to continue working with VDart? (Multiple selections allowed) | Transparency and Communication'
+    ],
+    'Additional Services Interest': [
+      'Please indicate which additional services you are interested in exploring with VDart? | Services',
+      'Please indicate which additional services you are interested in exploring with VDart? | Products',
+      'Please indicate which additional services you are interested in exploring with VDart? | Digital Transformation',
+      'Please indicate which additional services you are interested in exploring with VDart? | All the above'
+    ]
+  };
+
+  const getQuestionResponses = (question) => {
+    const responses = data.filter(row => {
+      const value = row[question];
+      return value && value.trim() !== '' && value !== 'NA' && value !== 'Not Answered';
+    });
+    
+    console.log(`Question: ${question}`);
+    console.log(`Responses found: ${responses.length}`);
+    
+    const responseCounts = {};
+    const responseDetails = {};
+    
+    responses.forEach(row => {
+      const response = row[question];
+      responseCounts[response] = (responseCounts[response] || 0) + 1;
+      
+      if (!responseDetails[response]) {
+        responseDetails[response] = [];
+      }
+      
+      responseDetails[response].push({
+        email: row.Email || 'N/A',
+        firstName: row['First Name'] || 'N/A',
+        lastName: row['Last Name'] || 'N/A',
+        client: row.Client || 'N/A',
+        function: row.Function || 'N/A',
+        bu: row.BU || 'N/A'
+      });
+    });
+    
+    return {
+      totalResponses: responses.length,
+      responses: Object.entries(responseCounts)
+        .map(([response, count]) => ({
+          response,
+          count,
+          percentage: responses.length > 0 ? ((count / responses.length) * 100).toFixed(1) : '0',
+          details: responseDetails[response] || []
+        }))
+        .sort((a, b) => b.count - a.count)
+    };
+  };
+
+  const getMultiSelectData = (categoryName) => {
+    const questions = multiSelectCategories[categoryName] || [];
+    
+    return questions.map(questionKey => {
+      const label = questionKey.split(' | ')[1] || questionKey;
+      const responses = data.filter(row => {
+        const value = row[questionKey];
+        return value === '1' || value === 1 || value === true;
+      });
+      
+      console.log(`Multi-select: ${label}, Responses: ${responses.length}`);
+      
+      const details = responses.map(row => ({
+        email: row.Email || 'N/A',
+        firstName: row['First Name'] || 'N/A',
+        lastName: row['Last Name'] || 'N/A',
+        client: row.Client || 'N/A',
+        function: row.Function || 'N/A',
+        bu: row.BU || 'N/A'
+      }));
+      
+      return {
+        label,
+        count: responses.length,
+        percentage: data.length > 0 ? ((responses.length / data.length) * 100).toFixed(1) : '0',
+        details
+      };
+    }).sort((a, b) => b.count - a.count);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const QuestionDetailCard = ({ question, shortTitle }) => {
+    const questionData = getQuestionResponses(question);
+    const isExpanded = expandedQuestion === question;
+    
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6 mb-4">
+        <div 
+          className="flex items-center justify-between cursor-pointer"
+          onClick={() => setExpandedQuestion(isExpanded ? null : question)}
+        >
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">{shortTitle}</h3>
+            <p className="text-sm text-gray-600 mb-2">{question}</p>
+            <p className="text-sm font-medium text-blue-600">{questionData.totalResponses} responses</p>
+          </div>
+          {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+        </div>
+        
+        {isExpanded && (
+          <div className="mt-6 border-t pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">Response Distribution</h4>
+                <div className="space-y-2">
+                  {questionData.responses.map((item, index) => {
+                    const responseKey = `${question}-${item.response}`;
+                    const isResponseExpanded = expandedResponse === responseKey;
+                    
+                    return (
+                      <div key={index} className="border rounded-lg">
+                        <div 
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-t-lg cursor-pointer hover:bg-gray-100"
+                          onClick={() => setExpandedResponse(isResponseExpanded ? null : responseKey)}
+                        >
+                          <span className="text-sm text-gray-700 font-medium">{item.response}</span>
+                          <div className="flex items-center">
+                            <span className="text-sm font-medium text-gray-900 mr-2">{item.count}</span>
+                            <span className="text-xs text-gray-500 mr-2">({item.percentage}%)</span>
+                            {isResponseExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </div>
+                        </div>
+                        
+                        {isResponseExpanded && (
+                          <div className="p-4 bg-white border-t">
+                            <div className="mb-3">
+                              <h5 className="font-medium text-gray-800 mb-2">
+                                Respondents who selected "{item.response}" ({item.count} total)
+                              </h5>
+                            </div>
+                            
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full text-xs">
+                                <thead>
+                                  <tr className="bg-blue-100">
+                                    <th className="px-3 py-2 text-left font-medium text-blue-800">Name</th>
+                                    <th className="px-3 py-2 text-left font-medium text-blue-800">Client</th>
+                                    <th className="px-3 py-2 text-left font-medium text-blue-800">Role</th>
+                                    <th className="px-3 py-2 text-left font-medium text-blue-800">BU</th>
+                                    <th className="px-3 py-2 text-left font-medium text-blue-800">Email</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {item.details.map((detail, detailIndex) => (
+                                    <tr key={detailIndex} className={detailIndex % 2 === 0 ? 'bg-blue-50' : 'bg-white'}>
+                                      <td className="px-3 py-2 font-medium text-gray-900">
+                                        {detail.firstName} {detail.lastName}
+                                      </td>
+                                      <td className="px-3 py-2 text-gray-700">{detail.client}</td>
+                                      <td className="px-3 py-2 text-gray-700">{detail.function}</td>
+                                      <td className="px-3 py-2 text-gray-700">{detail.bu}</td>
+                                      <td className="px-3 py-2 text-gray-600 text-xs">{detail.email}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            
+                            <div className="mt-4 pt-3 border-t border-gray-200">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                                <div className="bg-gray-50 p-2 rounded">
+                                  <div className="font-medium text-gray-800">Unique Clients</div>
+                                  <div className="text-gray-600">
+                                    {[...new Set(item.details.map(d => d.client))].length}
+                                  </div>
+                                </div>
+                                <div className="bg-gray-50 p-2 rounded">
+                                  <div className="font-medium text-gray-800">Unique BUs</div>
+                                  <div className="text-gray-600">
+                                    {[...new Set(item.details.map(d => d.bu))].length}
+                                  </div>
+                                </div>
+                                <div className="bg-gray-50 p-2 rounded">
+                                  <div className="font-medium text-gray-800">Top Client</div>
+                                  <div className="text-gray-600">
+                                    {(() => {
+                                      const clientCounts = item.details.reduce((acc, curr) => {
+                                        acc[curr.client] = (acc[curr.client] || 0) + 1;
+                                        return acc;
+                                      }, {});
+                                      const topClient = Object.entries(clientCounts).sort(([,a], [,b]) => b - a)[0];
+                                      return topClient ? topClient[0] : 'N/A';
+                                    })()}
+                                  </div>
+                                </div>
+                                <div className="bg-gray-50 p-2 rounded">
+                                  <div className="font-medium text-gray-800">Top Role</div>
+                                  <div className="text-gray-600">
+                                    {(() => {
+                                      const roleCounts = item.details.reduce((acc, curr) => {
+                                        acc[curr.function] = (acc[curr.function] || 0) + 1;
+                                        return acc;
+                                      }, {});
+                                      const topRole = Object.entries(roleCounts).sort(([,a], [,b]) => b - a)[0];
+                                      return topRole ? topRole[0] : 'N/A';
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">Visual Distribution</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={questionData.responses.slice(0, 5)}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="response" angle={-45} textAnchor="end" height={80} fontSize={10} />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#8884d8" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const MultiSelectCard = ({ categoryName, data }) => {
+    const isExpanded = expandedQuestion === categoryName;
+    
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6 mb-4">
+        <div 
+          className="flex items-center justify-between cursor-pointer"
+          onClick={() => setExpandedQuestion(isExpanded ? null : categoryName)}
+        >
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">{categoryName}</h3>
+            <p className="text-sm text-gray-600 mb-2">Multiple selection responses</p>
+            <p className="text-sm font-medium text-blue-600">{data.length} options</p>
+          </div>
+          {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+        </div>
+        
+        {isExpanded && (
+          <div className="mt-6 border-t pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">Selection Distribution</h4>
+                <div className="space-y-2">
+                  {data.map((item, index) => {
+                    const responseKey = `${categoryName}-${item.label}`;
+                    const isResponseExpanded = expandedResponse === responseKey;
+                    
+                    return (
+                      <div key={index} className="border rounded-lg">
+                        <div 
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-t-lg cursor-pointer hover:bg-gray-100"
+                          onClick={() => setExpandedResponse(isResponseExpanded ? null : responseKey)}
+                        >
+                          <span className="text-sm text-gray-700 font-medium">{item.label}</span>
+                          <div className="flex items-center">
+                            <span className="text-sm font-medium text-gray-900 mr-2">{item.count}</span>
+                            <span className="text-xs text-gray-500 mr-2">({item.percentage}%)</span>
+                            {isResponseExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </div>
+                        </div>
+                        
+                        {isResponseExpanded && (
+                          <div className="p-4 bg-white border-t">
+                            <div className="mb-3">
+                              <h5 className="font-medium text-gray-800 mb-2">
+                                Respondents who selected "{item.label}" ({item.count} total)
+                              </h5>
+                            </div>
+                            
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full text-xs">
+                                <thead>
+                                  <tr className="bg-green-100">
+                                    <th className="px-3 py-2 text-left font-medium text-green-800">Name</th>
+                                    <th className="px-3 py-2 text-left font-medium text-green-800">Client</th>
+                                    <th className="px-3 py-2 text-left font-medium text-green-800">Role</th>
+                                    <th className="px-3 py-2 text-left font-medium text-green-800">BU</th>
+                                    <th className="px-3 py-2 text-left font-medium text-green-800">Email</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {item.details.map((detail, detailIndex) => (
+                                    <tr key={detailIndex} className={detailIndex % 2 === 0 ? 'bg-green-50' : 'bg-white'}>
+                                      <td className="px-3 py-2 font-medium text-gray-900">
+                                        {detail.firstName} {detail.lastName}
+                                      </td>
+                                      <td className="px-3 py-2 text-gray-700">{detail.client}</td>
+                                      <td className="px-3 py-2 text-gray-700">{detail.function}</td>
+                                      <td className="px-3 py-2 text-gray-700">{detail.bu}</td>
+                                      <td className="px-3 py-2 text-gray-600 text-xs">{detail.email}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            
+                            <div className="mt-4 pt-3 border-t border-gray-200">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                                <div className="bg-gray-50 p-2 rounded">
+                                  <div className="font-medium text-gray-800">Unique Clients</div>
+                                  <div className="text-gray-600">
+                                    {[...new Set(item.details.map(d => d.client))].length}
+                                  </div>
+                                </div>
+                                <div className="bg-gray-50 p-2 rounded">
+                                  <div className="font-medium text-gray-800">Unique BUs</div>
+                                  <div className="text-gray-600">
+                                    {[...new Set(item.details.map(d => d.bu))].length}
+                                  </div>
+                                </div>
+                                <div className="bg-gray-50 p-2 rounded">
+                                  <div className="font-medium text-gray-800">Top Client</div>
+                                  <div className="text-gray-600">
+                                    {Object.entries(item.details.reduce((acc, curr) => {
+                                      acc[curr.client] = (acc[curr.client] || 0) + 1;
+                                      return acc;
+                                    }, {})).sort(([,a], [,b]) => b - a)[0]?.[0] || 'N/A'}
+                                  </div>
+                                </div>
+                                <div className="bg-gray-50 p-2 rounded">
+                                  <div className="font-medium text-gray-800">Top Role</div>
+                                  <div className="text-gray-600">
+                                    {Object.entries(item.details.reduce((acc, curr) => {
+                                      acc[curr.function] = (acc[curr.function] || 0) + 1;
+                                      return acc;
+                                    }, {})).sort(([,a], [,b]) => b - a)[0]?.[0] || 'N/A'}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-3">Visual Distribution</h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={data}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" angle={-45} textAnchor="end" height={80} fontSize={10} />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#82ca9d" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">VDart Survey - Detailed Questions</h1>
+          <p className="text-gray-600">Detailed analysis of survey responses by question</p>
+        </div>
+
+        <div className="space-y-6">
+          {/* Single-response questions */}
+          {Object.entries(surveyQuestions).map(([question, shortTitle]) => (
+            <QuestionDetailCard key={question} question={question} shortTitle={shortTitle} />
+          ))}
+          
+          {/* Multi-select questions */}
+          {Object.entries(multiSelectCategories).map(([categoryName, questions]) => (
+            <MultiSelectCard 
+              key={categoryName} 
+              categoryName={categoryName} 
+              data={getMultiSelectData(categoryName)}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Dashboard;
